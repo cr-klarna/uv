@@ -1696,6 +1696,487 @@ fn show_sizes() -> Result<()> {
     Resolved 2 packages in [TIME]
     "###
     );
+    Ok(())
+}
+
+#[test]
+fn json_output() -> Result<()> {
+    let context = TestContext::new("3.12");
+
+    let pyproject_toml = context.temp_dir.child("pyproject.toml");
+    pyproject_toml.write_str(
+        r#"
+        [project]
+        name = "project"
+        version = "0.1.0"
+        requires-python = ">=3.12"
+        dependencies = [
+            "iniconfig",
+            "pip",
+            "anyio < 2 ; sys_platform == 'win32'",
+            "anyio > 2 ; sys_platform == 'linux'",
+            "flask[dotenv,async]",
+        ]
+
+        [dependency-groups]
+        dev = [
+            "plotly",
+            "pip",
+        ]
+        test = [
+            "pytest",
+        ]
+    "#,
+    )?;
+
+    uv_snapshot!(context.filters(), context.tree().arg("--universal").arg("--format=json"), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    [
+      {
+        "name": "project",
+        "version": "0.1.0",
+        "dependency_type": "project",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "pip",
+            "version": "24.0",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "iniconfig",
+            "version": "2.0.0",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "flask",
+            "version": "3.0.2",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "anyio",
+            "version": "4.3.0",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "anyio",
+            "version": "1.4.0",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "plotly",
+            "version": "5.20.0",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "pip",
+            "version": "24.0",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": ""
+      },
+      {
+        "name": "anyio",
+        "version": "1.4.0",
+        "dependency_type": "direct",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "sniffio",
+            "version": "1.3.1",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "idna",
+            "version": "3.6",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "async-generator",
+            "version": "1.10",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": ""
+      },
+      {
+        "name": "async-generator",
+        "version": "1.10",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "idna",
+        "version": "3.6",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "sniffio",
+        "version": "1.3.1",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "anyio",
+        "version": "4.3.0",
+        "dependency_type": "direct",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "sniffio",
+            "version": "1.3.1",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "idna",
+            "version": "3.6",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": ""
+      },
+      {
+        "name": "idna",
+        "version": "3.6",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "sniffio",
+        "version": "1.3.1",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "flask",
+        "version": "3.0.2",
+        "dependency_type": "direct",
+        "extras": [
+          "async",
+          "dotenv"
+        ],
+        "dependencies": [
+          {
+            "name": "python-dotenv",
+            "version": "1.0.1",
+            "extra": "dotenv",
+            "cyclical": false
+          },
+          {
+            "name": "asgiref",
+            "version": "3.8.1",
+            "extra": "async",
+            "cyclical": false
+          },
+          {
+            "name": "werkzeug",
+            "version": "3.0.1",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "jinja2",
+            "version": "3.1.3",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "itsdangerous",
+            "version": "2.1.2",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "click",
+            "version": "8.1.7",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "blinker",
+            "version": "1.7.0",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": ""
+      },
+      {
+        "name": "blinker",
+        "version": "1.7.0",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "click",
+        "version": "8.1.7",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "colorama",
+            "version": "0.4.6",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": ""
+      },
+      {
+        "name": "colorama",
+        "version": "0.4.6",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "itsdangerous",
+        "version": "2.1.2",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "jinja2",
+        "version": "3.1.3",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "markupsafe",
+            "version": "2.1.5",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": ""
+      },
+      {
+        "name": "markupsafe",
+        "version": "2.1.5",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "werkzeug",
+        "version": "3.0.1",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "markupsafe",
+            "version": "2.1.5",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": ""
+      },
+      {
+        "name": "markupsafe",
+        "version": "2.1.5",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "asgiref",
+        "version": "3.8.1",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "python-dotenv",
+        "version": "1.0.1",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "iniconfig",
+        "version": "2.0.0",
+        "dependency_type": "direct",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "pip",
+        "version": "24.0",
+        "dependency_type": "direct",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "pip",
+        "version": "24.0",
+        "dependency_type": "direct",
+        "extras": [],
+        "dependencies": [],
+        "group": "dev"
+      },
+      {
+        "name": "plotly",
+        "version": "5.20.0",
+        "dependency_type": "direct",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "tenacity",
+            "version": "8.2.3",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "packaging",
+            "version": "24.0",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": "dev"
+      },
+      {
+        "name": "packaging",
+        "version": "24.0",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "tenacity",
+        "version": "8.2.3",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      }
+    ]
+
+    ----- stderr -----
+    Resolved 23 packages in [TIME]
+    "#
+    );
+
+    uv_snapshot!(context.filters(), context.tree().arg("--universal").arg("--only-group").arg("dev").arg("--format=json"), @r#"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    [
+      {
+        "name": "project",
+        "version": "0.1.0",
+        "dependency_type": "project",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "plotly",
+            "version": "5.20.0",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "pip",
+            "version": "24.0",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": ""
+      },
+      {
+        "name": "pip",
+        "version": "24.0",
+        "dependency_type": "direct",
+        "extras": [],
+        "dependencies": [],
+        "group": "dev"
+      },
+      {
+        "name": "plotly",
+        "version": "5.20.0",
+        "dependency_type": "direct",
+        "extras": [],
+        "dependencies": [
+          {
+            "name": "tenacity",
+            "version": "8.2.3",
+            "extra": "",
+            "cyclical": false
+          },
+          {
+            "name": "packaging",
+            "version": "24.0",
+            "extra": "",
+            "cyclical": false
+          }
+        ],
+        "group": "dev"
+      },
+      {
+        "name": "packaging",
+        "version": "24.0",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      },
+      {
+        "name": "tenacity",
+        "version": "8.2.3",
+        "dependency_type": "transitive",
+        "extras": [],
+        "dependencies": [],
+        "group": ""
+      }
+    ]
+
+    ----- stderr -----
+    Resolved 23 packages in [TIME]
+    "#
+    );
+
+    // `uv tree` should update the lockfile
+    let lock = context.read("uv.lock");
+    assert!(!lock.is_empty());
 
     Ok(())
 }

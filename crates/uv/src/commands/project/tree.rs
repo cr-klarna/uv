@@ -7,7 +7,7 @@ use tokio::sync::Semaphore;
 use uv_cache::{Cache, Refresh};
 use uv_cache_info::Timestamp;
 use uv_client::{BaseClientBuilder, RegistryClientBuilder};
-use uv_configuration::{Concurrency, DependencyGroups, TargetTriple};
+use uv_configuration::{Concurrency, DependencyGroups, TargetTriple, TreeFormat};
 use uv_distribution_types::IndexCapabilities;
 use uv_normalize::DefaultGroups;
 use uv_normalize::PackageName;
@@ -46,6 +46,7 @@ pub(crate) async fn tree(
     invert: bool,
     outdated: bool,
     show_sizes: bool,
+    format: Option<TreeFormat>,
     python_version: Option<PythonVersion>,
     python_platform: Option<TargetTriple>,
     python: Option<String>,
@@ -280,6 +281,7 @@ pub(crate) async fn tree(
         no_dedupe,
         invert,
         show_sizes,
+        format.unwrap(),
     );
 
     print!("{tree}");

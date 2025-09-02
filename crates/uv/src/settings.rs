@@ -27,6 +27,7 @@ use uv_configuration::{
     ExportFormat, ExtrasSpecification, HashCheckingMode, IndexStrategy, InstallOptions,
     KeyringProviderType, NoBinary, NoBuild, ProjectBuildBackend, Reinstall, RequiredVersion,
     SourceStrategy, TargetTriple, TrustedHost, TrustedPublishing, Upgrade, VersionControlSystem,
+    TreeFormat,
 };
 use uv_distribution_types::{
     ConfigSettings, DependencyMetadata, ExtraBuildVariables, Index, IndexLocations, IndexUrl,
@@ -1716,6 +1717,7 @@ pub(crate) struct TreeSettings {
     pub(crate) invert: bool,
     pub(crate) outdated: bool,
     pub(crate) show_sizes: bool,
+    pub(crate) format: Option<TreeFormat>,
     #[allow(dead_code)]
     pub(crate) script: Option<PathBuf>,
     pub(crate) python_version: Option<PythonVersion>,
@@ -1774,6 +1776,7 @@ impl TreeSettings {
             invert: tree.invert,
             outdated: tree.outdated,
             show_sizes: tree.show_sizes,
+            format: tree.format,
             script,
             python_version,
             python_platform,

@@ -8,9 +8,10 @@ use petgraph::graph::{EdgeIndex, NodeIndex};
 use petgraph::prelude::EdgeRef;
 use petgraph::{Direction, Graph};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use serde::{Serialize};
 
-use uv_configuration::DependencyGroupsWithDefaults;
 use uv_console::human_readable_bytes;
+use uv_configuration::{DependencyGroupsWithDefaults, TreeFormat};
 use uv_normalize::{ExtraName, GroupName, PackageName};
 use uv_pep440::Version;
 use uv_pep508::MarkerTree;
@@ -18,6 +19,375 @@ use uv_pypi_types::ResolverMarkerEnvironment;
 
 use crate::lock::PackageId;
 use crate::{Lock, PackageMap};
+
+
+trait TreeDisplayRenderer<'env> {
+    fn render<T>(self: &Self, display: &TreeDisplay<'env>, root_node_iterator: T, f: &mut std::fmt::Formatter) -> std::fmt::Result
+    where T: Iterator<Item = Cursor>;
+}
+
+struct ConsoleOutputFormatter<'env>{
+    display: &'env TreeDisplay<'env>,
+}
+
+impl<'env> ConsoleOutputFormatter<'env> {
+    fn accumulate(self: &Self, cursor: Cursor, visited: &mut FxHashMap<&'env PackageId, Vec<&'env PackageId>>, path: &mut Vec<&'env PackageId>) -> Vec<String> {
+        // Short-circuit if the current path is longer than the provided depth.
+        if path.len() > self.display.depth {
+            return Vec::new();
+        }
+
+        let Node::Package(package_id) = self.display.graph[cursor.node()] else {
+            return Vec::new();
+        };
+        let edge = cursor.edge().map(|edge_id| &self.display.graph[edge_id]);
+
+        let line = {
+            let mut line = format!("{}", package_id.name);
+
+            if let Some(extras) = edge.and_then(Edge::extras) {
+                if !extras.is_empty() {
+                    line.push('[');
+                    line.push_str(extras.iter().join(", ").as_str());
+                    line.push(']');
+                }
+            }
+
+                if let Some(version) = package_id.version.as_ref() {
+                line.push(' ');
+                line.push('v');
+                let _ = write!(line, "{version}");
+            }
+
+            if let Some(edge) = edge {
+                match edge {
+                    Edge::Prod(_) => {}
+                    Edge::Optional(extra, _) => {
+                        let _ = write!(line, " (extra: {extra})");
+                    }
+                    Edge::Dev(group, _) => {
+                        let _ = write!(line, " (group: {group})");
+                    }
+                }
+            }
+
+            // Append compressed wheel size, if available in the lockfile.
+            // Keep it simple: use the first wheel entry that includes a size.
+            if self.display.show_sizes {
+                let package = self.display.lock.find_by_id(package_id);
+                if let Some(size_bytes) = package.wheels.iter().find_map(|wheel| wheel.size) {
+                    let (bytes, unit) = human_readable_bytes(size_bytes);
+                    line.push(' ');
+                    line.push_str(format!("{}", format!("({bytes:.1}{unit})").dimmed()).as_str());
+                }
+            }
+
+            line
+        };
+
+        // Skip the traversal if:
+        // 1. The package is in the current traversal path (i.e., a dependency cycle).
+        // 2. The package has been visited and de-duplication is enabled (default).
+        if let Some(requirements) = visited.get(package_id) {
+            if !self.display.no_dedupe || path.contains(&package_id) {
+                return if requirements.is_empty() {
+                    vec![line]
+                } else {
+                    vec![format!("{line} (*)")]
+                };
+            }
+        }
+
+        // Incorporate the latest version of the package, if known.
+        let line = if let Some(version) = self.display.latest.get(package_id) {
+            format!("{line} {}", format!("(latest: v{version})").bold().cyan())
+        } else {
+            line
+        };
+
+        let mut dependencies = self.display.graph
+            .edges_directed(cursor.node(), Direction::Outgoing)
+            .filter_map(|edge| match self.display.graph[edge.target()] {
+                Node::Root => None,
+                Node::Package(_) => Some(Cursor::new(edge.target(), edge.id())),
+            })
+            .collect::<Vec<_>>();
+        dependencies.sort_by_key(|cursor| {
+            let node = &self.display.graph[cursor.node()];
+            let edge = cursor
+                .edge()
+                .map(|edge_id| &self.display.graph[edge_id])
+                .map(Edge::kind);
+            (edge, node)
+        });
+
+        let mut lines = vec![line];
+
+        // Keep track of the dependency path to avoid cycles.
+        visited.insert(
+            package_id,
+            dependencies
+                .iter()
+                .filter_map(|node| match self.display.graph[node.node()] {
+                    Node::Package(package_id) => Some(package_id),
+                    Node::Root => None,
+                })
+                .collect(),
+        );
+        path.push(package_id);
+
+        for (index, dep) in dependencies.iter().enumerate() {
+            // For sub-visited packages, add the prefix to make the tree display user-friendly.
+            // The key observation here is you can group the tree as follows when you're at the
+            // root of the tree:
+            // root_package
+            // ├── level_1_0          // Group 1
+            // │   ├── level_2_0      ...
+            // │   │   ├── level_3_0  ...
+            // │   │   └── level_3_1  ...
+            // │   └── level_2_1      ...
+            // ├── level_1_1          // Group 2
+            // │   ├── level_2_2      ...
+            // │   └── level_2_3      ...
+            // └── level_1_2          // Group 3
+            //     └── level_2_4      ...
+            //
+            // The lines in Group 1 and 2 have `├── ` at the top and `|   ` at the rest while
+            // those in Group 3 have `└── ` at the top and `    ` at the rest.
+            // This observation is true recursively even when looking at the subtree rooted
+            // at `level_1_0`.
+            let (prefix_top, prefix_rest) = if dependencies.len() - 1 == index {
+                ("└── ", "    ")
+            } else {
+                ("├── ", "│   ")
+            };
+            for (visited_index, visited_line) in self.accumulate(
+                *dep,
+                visited,
+                path,
+            ).iter().enumerate()
+            {
+                let prefix = if visited_index == 0 {
+                    prefix_top
+                } else {
+                    prefix_rest
+                };
+                lines.push(format!("{prefix}{visited_line}"));
+            }
+        }
+
+        path.pop();
+
+        lines
+    }
+}
+
+impl<'env> TreeDisplayRenderer<'env> for ConsoleOutputFormatter<'env> {
+    fn render<T>(self: &Self, display: &TreeDisplay<'env>, cursor_iterator: T, f: &mut std::fmt::Formatter) -> std::fmt::Result
+    where T: Iterator<Item = Cursor> {
+        let mut lines = Vec::with_capacity(display.graph.node_count());
+        let mut visited = FxHashMap::with_capacity_and_hasher(display.graph.node_count(), FxBuildHasher);
+        let mut path = Vec::new();
+        for cur in cursor_iterator.into_iter() {
+            path.clear();
+            lines.extend(self.accumulate(cur, &mut visited, &mut path));
+        }
+
+        let mut deduped = false;
+        for line in lines {
+            deduped |= line.contains('*');
+            writeln!(f, "{line}")?;
+        }
+
+        if deduped {
+            let message = if display.no_dedupe {
+                "(*) Package tree is a cycle and cannot be shown".italic()
+            } else {
+                "(*) Package tree already displayed".italic()
+            };
+            writeln!(f, "{message}")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "lowercase")]
+enum TreeDependencyType {
+    Project,
+    Transitive,
+    Direct,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "snake_case")]
+struct PackageDependencyEntry {
+    name: String,
+    version: String,
+    dependency_type: TreeDependencyType,
+    extras: Vec<String>,
+    dependencies: Vec<PackageSubDependencyEntry>,
+    group: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "snake_case")]
+struct PackageSubDependencyEntry {
+    name: String,
+    version: String,
+    extra: String,
+    cyclical: bool,
+}
+
+struct JsonOutputRenderer<'env>{
+    display: &'env TreeDisplay<'env>,
+}
+
+impl<'env> JsonOutputRenderer<'env> {
+    fn accumulate(self: &Self, cursor: Cursor, visited: &mut FxHashMap<&'env PackageId, Vec<&'env PackageId>>, path: &mut Vec<&'env PackageId>) -> Vec<PackageDependencyEntry> {
+        // Short-circuit if the current path is longer than the provided depth.
+        if path.len() > self.display.depth {
+            return Vec::new();
+        }
+
+        let Node::Package(package_id) = self.display.graph[cursor.node()] else {
+            return Vec::new();
+        };
+
+        // Skip the traversal if the package is in the current traversal path (i.e., a dependency cycle).
+        if let Some(_) = visited.get(package_id) {
+            if path.contains(&package_id) {
+                return Vec::new();
+            }
+        }
+        let group = cursor.edge().map(|edge_id| &self.display.graph[edge_id]).map(|edge| match edge {
+            Edge::Dev(group_name, _) => group_name.to_string(),
+            _ => String::new(),
+        });
+        let extras: Vec<String> = cursor.edge().map(|edge_id| &self.display.graph[edge_id]).map(|edge| edge.extras().map(|extras| extras.iter().map(|extra| extra.to_string()).collect()).unwrap_or(Vec::new())).unwrap_or(Vec::new());
+        let version = if let Some(latest_version) = self.display.latest.get(package_id) {
+            format!("latest: v{latest_version}")
+        } else {
+            match package_id.version.as_ref() {
+                Some(found_version) => found_version.to_string(),
+                None => String::new(),
+            }
+        };
+        // get nodes required by this package
+        let dependencies = if let Node::Package(_) = self.display.graph[cursor.node()] {
+            self.display.graph
+            .edges_directed(cursor.node(), Direction::Outgoing)
+            .map(|edge_index| -> Option<PackageSubDependencyEntry> {
+                let node = &self.display.graph[edge_index.target()];
+                let edge = self.display.graph.edges_directed(edge_index.target(), Direction::Incoming).next();
+                let extra = if let Some(edge) = edge {
+                    match self.display.graph[edge.id()] {
+                        Edge::Optional(extra, _) => extra.to_string(),
+                        _ => String::new(),
+                    }
+                } else {
+                    String::new()
+                };
+                match node {
+                    Node::Package(package_id) => Some(PackageSubDependencyEntry {
+                        name: package_id.name.to_string(),
+                        version: package_id.version.as_ref().unwrap().to_string(),
+                        extra: extra,
+                        cyclical: path.contains(&package_id),
+                    }),
+                    _ => None,
+                }
+            })
+            .filter(|package_id| package_id.is_some())
+            .map(|package_id| package_id.unwrap())
+            .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        let dependency_type = if path.is_empty() {
+            TreeDependencyType::Project
+        } else {
+            if path.len() == 1 {
+                TreeDependencyType::Direct
+            } else {
+                TreeDependencyType::Transitive
+            }
+        };
+
+
+        let dep = PackageDependencyEntry {
+            name: package_id.name.to_string(),
+            version: version,
+            dependencies: dependencies,
+            extras: extras,
+            group: group.unwrap_or_default(),
+            dependency_type: dependency_type,
+        };
+
+
+        let mut dependency_nodes = self.display.graph
+            .edges_directed(cursor.node(), Direction::Outgoing)
+            .filter_map(|edge| match self.display.graph[edge.target()] {
+                Node::Root => None,
+                Node::Package(_) => Some(Cursor::new(edge.target(), edge.id())),
+            })
+            .collect::<Vec<_>>();
+        dependency_nodes.sort_by_key(|cursor| {
+            let node = &self.display.graph[cursor.node()];
+            let edge = cursor
+                .edge()
+                .map(|edge_id| &self.display.graph[edge_id])
+                .map(Edge::kind);
+            (edge, node)
+        });
+
+        let mut deps = vec![dep];
+
+        // Keep track of the dependency path to avoid cycles.
+        visited.insert(
+            package_id,
+            dependency_nodes
+                .iter()
+                .filter_map(|node| match self.display.graph[node.node()] {
+                    Node::Package(package_id) => Some(package_id),
+                    Node::Root => None,
+                })
+                .collect(),
+        );
+        path.push(package_id);
+
+        for (_, dep_cursor) in dependency_nodes.iter().enumerate() {
+            let visited_deps = self.accumulate(
+                *dep_cursor,
+                visited,
+                path,
+            );
+            deps.extend(visited_deps);
+        }
+
+        path.pop();
+
+        deps
+    }
+}
+
+impl<'env> TreeDisplayRenderer<'env> for JsonOutputRenderer<'env> {
+    fn render<T>(self: &Self, display: &TreeDisplay<'env>, cursor_iterator: T, f: &mut std::fmt::Formatter) -> std::fmt::Result
+    where T: Iterator<Item = Cursor> {
+        let mut lines = Vec::with_capacity(display.graph.node_count());
+        let mut visited = FxHashMap::with_capacity_and_hasher(display.graph.node_count(), FxBuildHasher);
+        let mut path = Vec::new();
+        for cur in cursor_iterator.into_iter() {
+            path.clear();
+            lines.extend(self.accumulate(cur, &mut visited, &mut path));
+        }
+
+        let output = serde_json::to_string_pretty(&lines).unwrap();
+        writeln!(f, "{output}")?;
+        Ok(())
+    }
+}
 
 #[derive(Debug)]
 pub struct TreeDisplay<'env> {
@@ -35,6 +405,7 @@ pub struct TreeDisplay<'env> {
     lock: &'env Lock,
     /// Whether to show sizes in the rendered output.
     show_sizes: bool,
+    format: TreeFormat,
 }
 
 impl<'env> TreeDisplay<'env> {
@@ -50,6 +421,7 @@ impl<'env> TreeDisplay<'env> {
         no_dedupe: bool,
         invert: bool,
         show_sizes: bool,
+        format: TreeFormat,
     ) -> Self {
         // Identify any workspace members.
         //
@@ -332,7 +704,7 @@ impl<'env> TreeDisplay<'env> {
         }
 
         // Reverse the graph.
-        if invert {
+        if invert && format != TreeFormat::Json {
             graph.reverse();
         }
 
@@ -406,191 +778,34 @@ impl<'env> TreeDisplay<'env> {
             no_dedupe,
             lock,
             show_sizes,
+            format,
         }
     }
 
-    /// Perform a depth-first traversal of the given package and its dependencies.
-    fn visit(
-        &'env self,
-        cursor: Cursor,
-        visited: &mut FxHashMap<&'env PackageId, Vec<&'env PackageId>>,
-        path: &mut Vec<&'env PackageId>,
-    ) -> Vec<String> {
-        // Short-circuit if the current path is longer than the provided depth.
-        if path.len() > self.depth {
-            return Vec::new();
-        }
+    fn render(
+        &self,
+        f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
 
-        let Node::Package(package_id) = self.graph[cursor.node()] else {
-            return Vec::new();
-        };
-        let edge = cursor.edge().map(|edge_id| &self.graph[edge_id]);
-
-        let line = {
-            let mut line = format!("{}", package_id.name);
-
-            if let Some(extras) = edge.and_then(Edge::extras) {
-                if !extras.is_empty() {
-                    line.push('[');
-                    line.push_str(extras.iter().join(", ").as_str());
-                    line.push(']');
-                }
-            }
-
-            if let Some(version) = package_id.version.as_ref() {
-                line.push(' ');
-                line.push('v');
-                let _ = write!(line, "{version}");
-            }
-
-            if let Some(edge) = edge {
-                match edge {
-                    Edge::Prod(_) => {}
-                    Edge::Optional(extra, _) => {
-                        let _ = write!(line, " (extra: {extra})");
-                    }
-                    Edge::Dev(group, _) => {
-                        let _ = write!(line, " (group: {group})");
-                    }
-                }
-            }
-
-            // Append compressed wheel size, if available in the lockfile.
-            // Keep it simple: use the first wheel entry that includes a size.
-            if self.show_sizes {
-                let package = self.lock.find_by_id(package_id);
-                if let Some(size_bytes) = package.wheels.iter().find_map(|wheel| wheel.size) {
-                    let (bytes, unit) = human_readable_bytes(size_bytes);
-                    line.push(' ');
-                    line.push_str(format!("{}", format!("({bytes:.1}{unit})").dimmed()).as_str());
-                }
-            }
-
-            line
-        };
-
-        // Skip the traversal if:
-        // 1. The package is in the current traversal path (i.e., a dependency cycle).
-        // 2. The package has been visited and de-duplication is enabled (default).
-        if let Some(requirements) = visited.get(package_id) {
-            if !self.no_dedupe || path.contains(&package_id) {
-                return if requirements.is_empty() {
-                    vec![line]
-                } else {
-                    vec![format!("{line} (*)")]
-                };
-            }
-        }
-
-        // Incorporate the latest version of the package, if known.
-        let line = if let Some(version) = self.latest.get(package_id) {
-            format!("{line} {}", format!("(latest: v{version})").bold().cyan())
-        } else {
-            line
-        };
-
-        let mut dependencies = self
-            .graph
-            .edges_directed(cursor.node(), Direction::Outgoing)
-            .filter_map(|edge| match self.graph[edge.target()] {
-                Node::Root => None,
-                Node::Package(_) => Some(Cursor::new(edge.target(), edge.id())),
-            })
-            .collect::<Vec<_>>();
-        dependencies.sort_by_key(|cursor| {
-            let node = &self.graph[cursor.node()];
-            let edge = cursor
-                .edge()
-                .map(|edge_id| &self.graph[edge_id])
-                .map(Edge::kind);
-            (edge, node)
-        });
-
-        let mut lines = vec![line];
-
-        // Keep track of the dependency path to avoid cycles.
-        visited.insert(
-            package_id,
-            dependencies
-                .iter()
-                .filter_map(|node| match self.graph[node.node()] {
-                    Node::Package(package_id) => Some(package_id),
-                    Node::Root => None,
-                })
-                .collect(),
-        );
-        path.push(package_id);
-
-        for (index, dep) in dependencies.iter().enumerate() {
-            // For sub-visited packages, add the prefix to make the tree display user-friendly.
-            // The key observation here is you can group the tree as follows when you're at the
-            // root of the tree:
-            // root_package
-            // ├── level_1_0          // Group 1
-            // │   ├── level_2_0      ...
-            // │   │   ├── level_3_0  ...
-            // │   │   └── level_3_1  ...
-            // │   └── level_2_1      ...
-            // ├── level_1_1          // Group 2
-            // │   ├── level_2_2      ...
-            // │   └── level_2_3      ...
-            // └── level_1_2          // Group 3
-            //     └── level_2_4      ...
-            //
-            // The lines in Group 1 and 2 have `├── ` at the top and `|   ` at the rest while
-            // those in Group 3 have `└── ` at the top and `    ` at the rest.
-            // This observation is true recursively even when looking at the subtree rooted
-            // at `level_1_0`.
-            let (prefix_top, prefix_rest) = if dependencies.len() - 1 == index {
-                ("└── ", "    ")
-            } else {
-                ("├── ", "│   ")
-            };
-            for (visited_index, visited_line) in self.visit(*dep, visited, path).iter().enumerate()
-            {
-                let prefix = if visited_index == 0 {
-                    prefix_top
-                } else {
-                    prefix_rest
-                };
-                lines.push(format!("{prefix}{visited_line}"));
-            }
-        }
-
-        path.pop();
-
-        lines
-    }
-
-    /// Depth-first traverse the nodes to render the tree.
-    fn render(&self) -> Vec<String> {
-        let mut path = Vec::new();
-        let mut lines = Vec::with_capacity(self.graph.node_count());
-        let mut visited =
-            FxHashMap::with_capacity_and_hasher(self.graph.node_count(), FxBuildHasher);
-
-        for node in &self.roots {
-            match self.graph[*node] {
+        let root_node_iterator = self.roots.iter().flat_map(|&node| {
+            match self.graph[node] {
                 Node::Root => {
-                    for edge in self.graph.edges_directed(*node, Direction::Outgoing) {
-                        let node = edge.target();
-                        path.clear();
-                        lines.extend(self.visit(
-                            Cursor::new(node, edge.id()),
-                            &mut visited,
-                            &mut path,
-                        ));
-                    }
+                    Either::Left(
+                        self.graph.edges_directed(node, Direction::Outgoing)
+                            .map(|edge| Cursor::new(edge.target(), edge.id()))
+                    )
                 }
                 Node::Package(_) => {
-                    path.clear();
-                    lines.extend(self.visit(Cursor::root(*node), &mut visited, &mut path));
+                    Either::Right(std::iter::once(Cursor::root(node)))
                 }
             }
+        });
+        match self.format {
+            TreeFormat::Json => JsonOutputRenderer{display: self}.render(self, root_node_iterator, f),
+            TreeFormat::Default => ConsoleOutputFormatter{display: self}.render(self, root_node_iterator, f),
         }
-
-        lines
     }
+
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
@@ -659,25 +874,8 @@ impl Cursor {
     }
 }
 
-impl std::fmt::Display for TreeDisplay<'_> {
+impl<'env> std::fmt::Display for TreeDisplay<'env> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        use owo_colors::OwoColorize;
-
-        let mut deduped = false;
-        for line in self.render() {
-            deduped |= line.contains('*');
-            writeln!(f, "{line}")?;
-        }
-
-        if deduped {
-            let message = if self.no_dedupe {
-                "(*) Package tree is a cycle and cannot be shown".italic()
-            } else {
-                "(*) Package tree already displayed".italic()
-            };
-            writeln!(f, "{message}")?;
-        }
-
-        Ok(())
+        self.render(f)
     }
 }

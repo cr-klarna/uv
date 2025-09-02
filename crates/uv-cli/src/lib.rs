@@ -12,7 +12,7 @@ use uv_auth::Service;
 use uv_cache::CacheArgs;
 use uv_configuration::{
     ExportFormat, IndexStrategy, KeyringProviderType, PackageNameSpecifier, ProjectBuildBackend,
-    TargetTriple, TrustedHost, TrustedPublishing, VersionControlSystem,
+    TargetTriple, TrustedHost, TrustedPublishing, TreeFormat, VersionControlSystem,
 };
 use uv_distribution_types::{
     ConfigSettingEntry, ConfigSettingPackageEntry, Index, IndexUrl, Origin, PipExtraIndex,
@@ -6528,6 +6528,9 @@ pub struct DisplayTreeArgs {
     /// Show compressed wheel sizes for packages in the tree.
     #[arg(long)]
     pub show_sizes: bool,
+    /// The format to use when displaying the dependency tree.
+    #[arg(long, value_enum, default_value = "default")]
+    pub format: Option<TreeFormat>,
 }
 
 #[derive(Args, Debug)]
