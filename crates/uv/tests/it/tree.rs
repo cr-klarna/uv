@@ -1743,44 +1743,37 @@ fn json_output() -> Result<()> {
           {
             "name": "pip",
             "version": "24.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "iniconfig",
             "version": "2.0.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "flask",
             "version": "3.0.2",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "anyio",
             "version": "4.3.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "anyio",
             "version": "1.4.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "plotly",
             "version": "5.20.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "pip",
             "version": "24.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": ""
@@ -1794,20 +1787,17 @@ fn json_output() -> Result<()> {
           {
             "name": "sniffio",
             "version": "1.3.1",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "idna",
             "version": "3.6",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "async-generator",
             "version": "1.10",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": ""
@@ -1845,14 +1835,12 @@ fn json_output() -> Result<()> {
           {
             "name": "sniffio",
             "version": "1.3.1",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "idna",
             "version": "3.6",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": ""
@@ -1885,44 +1873,37 @@ fn json_output() -> Result<()> {
           {
             "name": "python-dotenv",
             "version": "1.0.1",
-            "extra": "dotenv",
-            "cyclical": false
+            "extra": "dotenv"
           },
           {
             "name": "asgiref",
             "version": "3.8.1",
-            "extra": "async",
-            "cyclical": false
+            "extra": "async"
           },
           {
             "name": "werkzeug",
             "version": "3.0.1",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "jinja2",
             "version": "3.1.3",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "itsdangerous",
             "version": "2.1.2",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "click",
             "version": "8.1.7",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "blinker",
             "version": "1.7.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": ""
@@ -1944,8 +1925,7 @@ fn json_output() -> Result<()> {
           {
             "name": "colorama",
             "version": "0.4.6",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": ""
@@ -1975,8 +1955,7 @@ fn json_output() -> Result<()> {
           {
             "name": "markupsafe",
             "version": "2.1.5",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": ""
@@ -1998,8 +1977,7 @@ fn json_output() -> Result<()> {
           {
             "name": "markupsafe",
             "version": "2.1.5",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": ""
@@ -2061,14 +2039,12 @@ fn json_output() -> Result<()> {
           {
             "name": "tenacity",
             "version": "8.2.3",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "packaging",
             "version": "24.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": "dev"
@@ -2110,14 +2086,12 @@ fn json_output() -> Result<()> {
           {
             "name": "plotly",
             "version": "5.20.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "pip",
             "version": "24.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": ""
@@ -2139,14 +2113,12 @@ fn json_output() -> Result<()> {
           {
             "name": "tenacity",
             "version": "8.2.3",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           },
           {
             "name": "packaging",
             "version": "24.0",
-            "extra": "",
-            "cyclical": false
+            "extra": ""
           }
         ],
         "group": "dev"

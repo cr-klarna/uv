@@ -236,7 +236,6 @@ struct PackageSubDependencyEntry {
     name: String,
     version: String,
     extra: String,
-    cyclical: bool,
 }
 
 struct JsonOutputRenderer<'env>{
@@ -293,7 +292,6 @@ impl<'env> JsonOutputRenderer<'env> {
                         name: package_id.name.to_string(),
                         version: package_id.version.as_ref().unwrap().to_string(),
                         extra: extra,
-                        cyclical: path.contains(&package_id),
                     }),
                     _ => None,
                 }
